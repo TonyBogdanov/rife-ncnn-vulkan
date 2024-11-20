@@ -1,62 +1,69 @@
 name: release
-on:
-  workflow_dispatch: { }
+on: [ push ]
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_12.4.app/Contents/Developer
 
 jobs:
   purge_workflow_runs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: write
     steps:
-      - name: Setup
+      - name: setup
         run: sudo apt-get install -y jq
       - env:
           GH_TOKEN: ${{ github.token }}
-        name: Purge
+        name: purge
         run: |
           gh api repos/TonyBogdanov/rife-ncnn-vulkan/actions/runs --paginate |\
           jq '.workflow_runs[] | .id' |\
           xargs -t -I{} sh -c "gh api -X DELETE /repos/TonyBogdanov/rife-ncnn-vulkan/actions/runs/{} || true"
 
-  windows:
-    runs-on: windows-latest
-    env:
-      PACKAGENAME: rife-ncnn-vulkan
+  ubuntu:
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout
+        uses: actions/checkout@v4
         with:
           submodules: 'recursive'
-      - name: cache-vulkansdk
-        id: cache-vulkansdk
-        uses: actions/cache@v1
-        with:
-          path: "VulkanSDK"
-          key: VulkanSDK-1.2.198.1-Installer
       - name: vulkansdk
-        if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
         run: |
-          Invoke-WebRequest -Uri https://sdk.lunarg.com/sdk/download/1.2.198.1/windows/VulkanSDK-1.2.198.1-Installer.exe?Human=true -OutFile VulkanSDK-1.2.198.1-Installer.exe
-          7z x -aoa ./VulkanSDK-1.2.198.1-Installer.exe -oVulkanSDK
-          Remove-Item .\VulkanSDK\Demos, .\VulkanSDK\Tools -Recurse
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.3.296-jammy.list https://packages.lunarg.com/vulkan/1.3.296/lunarg-vulkan-1.3.296-jammy.list
+          sudo apt update
+          sudo apt install vulkan-sdk
+      - name: build
+        run: |
+          mkdir build && cd build
+          cmake ../src
+          cmake --build . -j 4
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: build/rife-ncnn-vulkan
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: vulkansdk
+        run: |
+          Invoke-WebRequest -Uri https://sdk.lunarg.com/sdk/download/1.3.296.0/windows/VulkanSDK-1.3.296.0-Installer.exe -OutFile VulkanSDK.exe
+          7z x -aoa ./VulkanSDK.exe -oVulkanSDK
       - name: build
         run: |
           $env:VULKAN_SDK="$(pwd)/VulkanSDK"
           mkdir build; cd build
           cmake -A x64 ../src
-          cmake --build . --config Release -j 2
-      - name: package
-        run: |
-          mkdir rife-ncnn-vulkan
-          Copy-Item -Verbose -Path "build\Release\rife-ncnn-vulkan.exe" -Destination "rife-ncnn-vulkan"
-          Copy-Item -Verbose -Path "C:\windows\system32\vcomp140.dll" -Destination "rife-ncnn-vulkan"
-          Copy-Item -Verbose -Recurse -Path "models\*" -Destination "rife-ncnn-vulkan"
-          7z a -r rife-ncnn-vulkan.zip rife-ncnn-vulkan
+          cmake --build . --config Release -j 4
       - name: upload
         uses: actions/upload-artifact@v4
         with:
-          name: rife-ncnn-vulkan
-          path: rife-ncnn-vulkan.zip
+          name: windows
+          path: build/Release/rife-ncnn-vulkan.exe

@@ -2,13 +2,13 @@ cmake_policy(SET CMP0091 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(rife-ncnn-vulkan)
-
 cmake_minimum_required(VERSION 3.9)
 
-if(NOT CMAKE_BUILD_TYPE)
+project(rife-ncnn-vulkan)
+
+if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE release CACHE STRING "Choose the type of build" FORCE)
-endif()
+endif ()
 
 option(USE_SYSTEM_NCNN "build with system libncnn" OFF)
 option(USE_SYSTEM_WEBP "build with system libwebp" OFF)
@@ -23,11 +23,11 @@ macro(rife_add_shader SHADER_SRC)
     set(SHADER_COMP_HEADER ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_SRC_NAME_WE}.comp.hex.h)
 
     add_custom_command(
-        OUTPUT ${SHADER_COMP_HEADER}
-        COMMAND ${CMAKE_COMMAND} -DSHADER_SRC=${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_SRC} -DSHADER_COMP_HEADER=${SHADER_COMP_HEADER} -P "${CMAKE_CURRENT_SOURCE_DIR}/generate_shader_comp_header.cmake"
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_SRC}
-        COMMENT "Preprocessing shader source ${SHADER_SRC_NAME_WE}.comp"
-        VERBATIM
+            OUTPUT ${SHADER_COMP_HEADER}
+            COMMAND ${CMAKE_COMMAND} -DSHADER_SRC=${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_SRC} -DSHADER_COMP_HEADER=${SHADER_COMP_HEADER} -P "${CMAKE_CURRENT_SOURCE_DIR}/generate_shader_comp_header.cmake"
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_SRC}
+            COMMENT "Preprocessing shader source ${SHADER_SRC_NAME_WE}.comp"
+            VERBATIM
     )
     set_source_files_properties(${SHADER_COMP_HEADER} PROPERTIES GENERATED TRUE)
 
@@ -36,62 +36,62 @@ endmacro()
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-if(OPENMP_FOUND)
+if (OPENMP_FOUND)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
-endif()
+endif ()
 
 # enable global link time optimization
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_supported OUTPUT ipo_supported_output)
-if(ipo_supported)
+if (ipo_supported)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-else()
+else ()
     message(WARNING "IPO is not supported: ${ipo_supported_output}")
-endif()
+endif ()
 
-if(USE_SYSTEM_NCNN)
+if (USE_SYSTEM_NCNN)
     set(GLSLANG_TARGET_DIR "GLSLANG-NOTFOUND" CACHE PATH "Absolute path to glslangTargets.cmake directory")
-    if(NOT GLSLANG_TARGET_DIR AND NOT DEFINED ENV{GLSLANG_TARGET_DIR})
+    if (NOT GLSLANG_TARGET_DIR AND NOT DEFINED ENV{GLSLANG_TARGET_DIR})
         message(WARNING "GLSLANG_TARGET_DIR must be defined! USE_SYSTEM_NCNN will be turned off.")
         set(USE_SYSTEM_NCNN OFF)
-    else()
+    else ()
         message(STATUS "Using glslang install located at ${GLSLANG_TARGET_DIR}")
 
         find_package(Threads)
 
         include("${GLSLANG_TARGET_DIR}/OSDependentTargets.cmake")
         include("${GLSLANG_TARGET_DIR}/OGLCompilerTargets.cmake")
-        if(EXISTS "${GLSLANG_TARGET_DIR}/HLSLTargets.cmake")
+        if (EXISTS "${GLSLANG_TARGET_DIR}/HLSLTargets.cmake")
             # hlsl support can be optional
             include("${GLSLANG_TARGET_DIR}/HLSLTargets.cmake")
-        endif()
+        endif ()
         include("${GLSLANG_TARGET_DIR}/glslangTargets.cmake")
         include("${GLSLANG_TARGET_DIR}/SPIRVTargets.cmake")
 
         if (NOT TARGET glslang OR NOT TARGET SPIRV)
             message(WARNING "glslang or SPIRV target not found! USE_SYSTEM_NCNN will be turned off.")
             set(USE_SYSTEM_NCNN OFF)
-        endif()
-    endif()
-endif()
+        endif ()
+    endif ()
+endif ()
 
-if(USE_SYSTEM_NCNN)
+if (USE_SYSTEM_NCNN)
     find_package(ncnn)
-    if(NOT TARGET ncnn)
+    if (NOT TARGET ncnn)
         message(WARNING "ncnn target not found! USE_SYSTEM_NCNN will be turned off.")
         set(USE_SYSTEM_NCNN OFF)
-    endif()
-endif()
+    endif ()
+endif ()
 
-if(NOT USE_SYSTEM_NCNN)
+if (NOT USE_SYSTEM_NCNN)
     # build ncnn library
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ncnn/CMakeLists.txt")
+    if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ncnn/CMakeLists.txt")
         message(FATAL_ERROR "The submodules were not downloaded! Please update submodules with \"git submodule update --init --recursive\" and try again.")
-    endif()
+    endif ()
 
     option(NCNN_INSTALL_SDK "" OFF)
     option(NCNN_PIXEL_ROTATE "" OFF)
@@ -203,22 +203,22 @@ if(NOT USE_SYSTEM_NCNN)
     option(WITH_LAYER_deformableconv2d "" OFF)
 
     add_subdirectory(ncnn)
-endif()
+endif ()
 
-if(USE_SYSTEM_WEBP)
+if (USE_SYSTEM_WEBP)
     set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
     find_package(WebP)
-    if(NOT TARGET webp)
+    if (NOT TARGET webp)
         message(WARNING "webp target not found! USE_SYSTEM_WEBP will be turned off.")
         set(USE_SYSTEM_WEBP OFF)
-    endif()
-endif()
+    endif ()
+endif ()
 
-if(NOT USE_SYSTEM_WEBP)
+if (NOT USE_SYSTEM_WEBP)
     # build libwebp library
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebp/CMakeLists.txt")
+    if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebp/CMakeLists.txt")
         message(FATAL_ERROR "The submodules were not downloaded! Please update submodules with \"git submodule update --init --recursive\" and try again.")
-    endif()
+    endif ()
 
     option(WEBP_ENABLE_SIMD "" ON)
     option(WEBP_BUILD_ANIM_UTILS "" OFF)
@@ -237,7 +237,7 @@ if(NOT USE_SYSTEM_WEBP)
     add_subdirectory(libwebp)
 
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libwebp/src)
-endif()
+endif ()
 
 rife_add_shader(rife_preproc.comp)
 rife_add_shader(rife_postproc.comp)
@@ -259,16 +259,16 @@ rife_add_shader(warp_pack8.comp)
 add_custom_target(generate-spirv DEPENDS ${SHADER_SPV_HEX_FILES})
 
 add_executable(rife-ncnn-vulkan
-    main.cpp
-    rife.cpp
-    warp.cpp
+        main.cpp
+        rife.cpp
+        warp.cpp
 )
 
 add_dependencies(rife-ncnn-vulkan generate-spirv)
 
 set(RIFE_LINK_LIBRARIES ncnn webp ${Vulkan_LIBRARY})
 
-if(USE_STATIC_MOLTENVK)
+if (USE_STATIC_MOLTENVK)
     find_library(CoreFoundation NAMES CoreFoundation)
     find_library(Foundation NAMES Foundation)
     find_library(Metal NAMES Metal)
@@ -279,15 +279,15 @@ if(USE_STATIC_MOLTENVK)
     find_library(IOSurface NAMES IOSurface)
 
     list(APPEND RIFE_LINK_LIBRARIES
-        ${Metal}
-        ${QuartzCore}
-        ${CoreGraphics}
-        ${Cocoa}
-        ${IOKit}
-        ${IOSurface}
-        ${Foundation}
-        ${CoreFoundation}
+            ${Metal}
+            ${QuartzCore}
+            ${CoreGraphics}
+            ${Cocoa}
+            ${IOKit}
+            ${IOSurface}
+            ${Foundation}
+            ${CoreFoundation}
     )
-endif()
+endif ()
 
 target_link_libraries(rife-ncnn-vulkan ${RIFE_LINK_LIBRARIES})
