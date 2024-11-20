@@ -6,6 +6,14 @@
 #include <vector>
 #include <clocale>
 
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <fcntl.h>
+#include <io.h>
+#include <thread>
+#include <chrono>
+
 #if _WIN32
 // image decoder and encoder with wic
 #include "wic_image.h"
@@ -120,73 +128,88 @@ static void print_usage()
     fprintf(stderr, "  -f pattern-format    output image filename pattern format (%%08d.jpg/png/webp, default=ext/%%08d.png)\n");
 }
 
-static int decode_image(const path_t& imagepath, ncnn::Mat& image, int* webp)
-{
-    *webp = 0;
+static size_t readFully(void* buffer, size_t size, FILE* stream) {
+    size_t totalBytesRead = 0;
+    char* currentPos = static_cast<char*>(buffer);
 
-    unsigned char* pixeldata = 0;
-    int w;
-    int h;
-    int c;
-
-#if _WIN32
-    FILE* fp = _wfopen(imagepath.c_str(), L"rb");
-#else
-    FILE* fp = fopen(imagepath.c_str(), "rb");
-#endif
-    if (fp)
-    {
-        // read whole file
-        unsigned char* filedata = 0;
-        int length = 0;
-        {
-            fseek(fp, 0, SEEK_END);
-            length = ftell(fp);
-            rewind(fp);
-            filedata = (unsigned char*)malloc(length);
-            if (filedata)
-            {
-                fread(filedata, 1, length, fp);
-            }
-            fclose(fp);
-        }
-
-        if (filedata)
-        {
-            pixeldata = webp_load(filedata, length, &w, &h, &c);
-            if (pixeldata)
-            {
-                *webp = 1;
-            }
-            else
-            {
-                // not webp, try jpg png etc.
-#if _WIN32
-                pixeldata = wic_decode_image(imagepath.c_str(), &w, &h, &c);
-#else // _WIN32
-                pixeldata = stbi_load_from_memory(filedata, length, &w, &h, &c, 3);
-                c = 3;
-#endif // _WIN32
-            }
-
-            free(filedata);
+    // Reopen STDIN in binary mode if the stream is stdin
+    if (stream == stdin) {
+        if (_setmode(_fileno(stdin), _O_BINARY) == -1) {
+            perror("Failed to set stdin to binary mode");
+            return totalBytesRead; // Return 0 bytes read in case of failure
         }
     }
 
-    if (!pixeldata)
-    {
-#if _WIN32
-        fwprintf(stderr, L"decode image %ls failed\n", imagepath.c_str());
-#else // _WIN32
-        fprintf(stderr, "decode image %s failed\n", imagepath.c_str());
-#endif // _WIN32
+    while (totalBytesRead < size) {
+        // Try reading the remaining data
+        size_t bytesRead = fread(currentPos, 1, size - totalBytesRead, stream);
 
+        if (bytesRead > 0) {
+            // Update counters and buffer position
+            totalBytesRead += bytesRead;
+            currentPos += bytesRead;
+        } else if (feof(stream)) {
+            // End of file reached
+            break;
+        } else if (ferror(stream)) {
+            // Check for recoverable errors
+            if (errno == EAGAIN || errno == EINTR) {
+                clearerr(stream); // Clear error and retry
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Short pause before retrying
+                continue;
+            } else {
+                // Unrecoverable error
+                perror("Error reading from stream");
+                break;
+            }
+        } else {
+            // If no data was read, wait for more data
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Short pause before retrying
+        }
+    }
+
+    return totalBytesRead;
+}
+
+static int decode_image(ncnn::Mat& image)
+{
+    // Declare width and height as 16-bit unsigned integers
+    uint16_t width, height;
+
+    // Read width and height from stdin as binary data (2 bytes each)
+    if (fread(&width, 2, 1, stdin) != 1 || fread(&height, 2, 1, stdin) != 1) {
+        fprintf(stderr, "Error: Failed to read width or height.\n");
         return -1;
     }
 
-    image = ncnn::Mat(w, h, (void*)pixeldata, (size_t)3, 3);
+    fprintf(stdout, "width: %d, height: %d\n", width, height);
 
-    return 0;
+    // Calculate the size of the image data (RGB: 3 bytes per pixel)
+    size_t size = (size_t)width * height * 3;
+
+    // Allocate memory for the pixel data
+    unsigned char* pixeldata = (unsigned char*)malloc(size);
+    if (pixeldata == NULL) {
+        fprintf(stderr, "Error: Memory allocation failed.\n");
+        return -1;
+    }
+
+    // Read the pixel data from stdin
+    fprintf(stdout, "reading: %d bytes\n", size);
+    size_t bytesRead = readFully(pixeldata, size, stdin);
+
+    // Check if the correct number of bytes was read
+    if (bytesRead != size) {
+        fprintf(stderr, "Error: Failed to read the correct number of bytes. Expected %zu, but got %zu.\n", size, bytesRead);
+        free(pixeldata);
+        return -1;
+    }
+
+    // Assign pixel data to the image (using the ncnn::Mat constructor)
+    image = ncnn::Mat(width, height, (void*)pixeldata, (size_t)3, 3);
+
+    fprintf(stdout, "success!\n");
+    return 0; // Success
 }
 
 static int encode_image(const path_t& imagepath, const ncnn::Mat& image)
@@ -324,8 +347,11 @@ void* load(void* args)
         v.outpath = ltp->output_files[i];
         v.timestep = ltp->timesteps[i];
 
-        int ret0 = decode_image(image0path, v.in0image, &v.webp0);
-        int ret1 = decode_image(image1path, v.in1image, &v.webp1);
+        v.webp0 = 0;
+        v.webp1 = 0;
+
+        int ret0 = decode_image(v.in0image);
+        int ret1 = decode_image(v.in1image);
 
         if (ret0 != 0 || ret1 != 1)
         {
