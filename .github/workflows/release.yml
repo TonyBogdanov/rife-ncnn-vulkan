@@ -1,6 +1,5 @@
 name: release
-on:
-  workflow_dispatch: { }
+on: [ push ]
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_12.4.app/Contents/Developer
@@ -32,7 +31,7 @@ jobs:
           submodules: 'recursive'
       - name: cache-vulkansdk
         id: cache-vulkansdk
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: "VulkanSDK"
           key: VulkanSDK-1.2.198.1-Installer
@@ -53,10 +52,8 @@ jobs:
           mkdir rife-ncnn-vulkan
           Copy-Item -Verbose -Path "build\Release\rife-ncnn-vulkan.exe" -Destination "rife-ncnn-vulkan"
           Copy-Item -Verbose -Path "C:\windows\system32\vcomp140.dll" -Destination "rife-ncnn-vulkan"
-          Copy-Item -Verbose -Recurse -Path "models\*" -Destination "rife-ncnn-vulkan"
-          7z a -r rife-ncnn-vulkan.zip rife-ncnn-vulkan
       - name: upload
         uses: actions/upload-artifact@v4
         with:
           name: rife-ncnn-vulkan
-          path: rife-ncnn-vulkan.zip
+          path: rife-ncnn-vulkan
